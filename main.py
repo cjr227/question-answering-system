@@ -94,9 +94,9 @@ def chat_turn(user_input: str, user_name: str) -> str:
 
 
 # Custom Variables
-embedding_model_id = "sentence-transformers/all-MiniLM-L6-v2"
-llm_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-reranker_model_id = 'cross-encoder/ms-marco-MiniLM-L12-v2'
+embedding_model_id = "avsolatorio/GIST-all-MiniLM-L6-v2"
+llm_model_id = "llamafactory/tiny-random-Llama-3"
+reranker_model_id = 'cross-encoder/ms-marco-TinyBERT-L2-v2'
 
 # Get Data
 url = "https://november7-730026606190.europe-west1.run.app/messages"
