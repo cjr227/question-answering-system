@@ -93,6 +93,11 @@ def chat_turn(user_input: str, user_name: str) -> str:
     return response
 
 
+# Custom Variables
+embedding_model_id = "sentence-transformers/all-MiniLM-L6-v2"
+llm_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
+reranker_model_id = 'cross-encoder/ms-marco-MiniLM-L12-v2'
+
 # Get Data
 url = "https://november7-730026606190.europe-west1.run.app/messages"
 r = requests.get(url, params={"limit": 4000}) # Max number of records is 3349
@@ -100,7 +105,7 @@ df = pd.DataFrame(r.json()["items"])
 assert len(df) == 3349
 
 # Initiate Vector Store
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_id)
 vector_store = Chroma(
     persist_directory="./chroma_db",
     embedding_function=embedding_model,
@@ -115,7 +120,7 @@ quantization_config = transformers.BitsAndBytesConfig(load_in_4bit = True,
                                         bnb_4bit_compute_dtype = bfloat16)
    
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-llm = HuggingFacePipeline.from_model_id(model_id="HuggingFaceTB/SmolLM2-1.7B-Instruct",
+llm = HuggingFacePipeline.from_model_id(model_id=llm_model_id,
                                        task = 'text-generation',
                                         pipeline_kwargs=dict(repetition_penalty=1.1, 
                                                              temperature=0.6, 
@@ -149,7 +154,7 @@ config = {
     "reranker": {
         "provider": "sentence_transformer",
         "config": {
-            "model": 'cross-encoder/ms-marco-MiniLM-L12-v2', # https://huggingface.co/cross-encoder/ms-marco-MiniLM-L12-v2
+            "model": reranker_model_id,
             "device": DEVICE,  # Use GPU if available
             "batch_size": 64 if DEVICE == "cuda" else 32  # high batch size for high memory GPUs
         }
