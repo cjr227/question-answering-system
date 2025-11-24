@@ -1,10 +1,12 @@
 bitsandbytes==0.48.2
-codecarbon==3.0.8
-langchain==1.0.5
+codecarbon==3.1.1
+langchain==1.1.0
+langchain-chroma==1.0.0
 langchain-community==0.4.1
-langchain-huggingface==1.0.1
+langchain-huggingface==1.1.0
 langchain-text-splitters==1.0.0
 sentence-transformers==4.1.0
+mem0ai==1.0.1
 matplotlib==3.7.2
 pandas==2.2.3
 torch @ https://download.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp311-cp311-linux_x86_64.whl
