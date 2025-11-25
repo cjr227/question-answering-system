@@ -17,13 +17,21 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from mem0 import Memory
 
+from llm_guard import scan_prompt, scan_output
+import llm_guard.input_scanners as lis
+import llm_guard.output_scanners as los
+
 import gradio as gr
-from huggingface_hub import InferenceClient
 
 from codecarbon import EmissionsTracker
 
 tracker = EmissionsTracker()
 tracker.start()
+
+input_scanners = [lis.Code(languages=["Python"]), lis.Gibberish(), 
+                  lis.PromptInjection(), lis.TokenLimit(), lis.InvisibleText()]
+output_scanners = [los.Code(languages=["Python"]), los.JSON(), 
+                   los.MaliciousURLs(), los.URLReachability()]
 
 # Get Data
 url = "https://november7-730026606190.europe-west1.run.app/messages"
@@ -93,12 +101,30 @@ def save_interaction(user_id: str, user_input: str, assistant_response: str):
         print(f"Error saving interaction: {e}")
 
 def chat_turn(user_input: str, user_name: str) -> str:
+    # Check input
+    user_input, results_valid, results_score = scan_prompt(input_scanners, user_input)
+    if any(not result for result in results_valid.values()):
+        print(f"Prompt {user_input} is not valid, scores: {results_score}")
+        exit(1)
+
+    user_name, results_valid, results_score = scan_prompt(input_scanners, user_name)
+    if any(not result for result in results_valid.values()):
+        print(f"Prompt {user_name} is not valid, scores: {results_score}")
+        exit(1)
+    
     user_id = get_user_id(user_name)
     # Retrieve context
     context = retrieve_context(user_input, user_id)
     
     # Generate response
     response = generate_response(user_input, context)
+
+    # Check output
+    response, results_valid, results_score = scan_output(
+    output_scanners, user_input, response)
+    if any(not result for result in results_valid.values()):
+        print(f"Output {response} is not valid, scores: {results_score}")
+        exit(1)
     
     # Save interaction
     save_interaction(user_id, user_input, response)
@@ -123,10 +149,10 @@ vector_store = Chroma(
 
 # Load LLM
 # Configuring BitsAndBytesConfig for loading model in an optimal way
-quantization_config = transformers.BitsAndBytesConfig(load_in_4bit = True,
-                                        bnb_4bit_quant_type = 'nf4',
-                                        bnb_4bit_use_double_quant = True,
-                                        bnb_4bit_compute_dtype = bfloat16)
+#quantization_config = transformers.BitsAndBytesConfig(load_in_4bit = True,
+#                                        bnb_4bit_quant_type = 'nf4',
+#                                        bnb_4bit_use_double_quant = True,
+#                                        bnb_4bit_compute_dtype = bfloat16)
    
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 llm = HuggingFacePipeline.from_model_id(model_id=llm_model_id,
@@ -137,7 +163,7 @@ llm = HuggingFacePipeline.from_model_id(model_id=llm_model_id,
                                                              return_full_text=False,
                                                              max_new_tokens=16384
                                                              ),
-                                       model_kwargs={'quantization_config': quantization_config},
+                                       #model_kwargs={'quantization_config': quantization_config},
                                        device_map = DEVICE)                                        
 chat_model = ChatHuggingFace(llm=llm)
 
@@ -235,4 +261,5 @@ with gr.Blocks() as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch()
+
