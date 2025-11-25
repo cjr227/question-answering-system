@@ -2,8 +2,7 @@
 ## Installed Libraries
 import requests
 import pandas as pd
-from flask import Flask, jsonify
-from flask_restful import reqparse, Resource, Api
+from fastapi import FastAPI
 
 import torch
 from torch import bfloat16
@@ -18,16 +17,30 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from mem0 import Memory
 
+import gradio as gr
+from huggingface_hub import InferenceClient
+
 from codecarbon import EmissionsTracker
 
 tracker = EmissionsTracker()
 tracker.start()
 
+# Get Data
+url = "https://november7-730026606190.europe-west1.run.app/messages"
+r = requests.get(url, params={"limit": 4000}) # Max number of records is 3349
+df = pd.DataFrame(r.json()["items"])
+assert len(df) == 3349
+
+df_name_to_id = df.groupby(["user_name", "user_id"], dropna=False).size().reset_index()
+name_to_id_lookup = {row["user_name"]: row["user_id"] for idx, row in df_name_to_id.iterrows()}
 
 # Custom Functions
 def get_user_id(user_name: str, id_to_name: dict = name_to_id_lookup) -> str:
     """Retrieve user ID from user name"""
-    return id_to_name[user_name]
+    try:
+        return id_to_name[user_name]
+    except KeyError:
+        return None
 
 def retrieve_context(query: str, user_id: str) -> list[dict]:
     """Retrieve relevant context from Mem0"""
@@ -98,11 +111,7 @@ embedding_model_id = "avsolatorio/GIST-all-MiniLM-L6-v2"
 llm_model_id = "llamafactory/tiny-random-Llama-3"
 reranker_model_id = 'cross-encoder/ms-marco-TinyBERT-L2-v2'
 
-# Get Data
-url = "https://november7-730026606190.europe-west1.run.app/messages"
-r = requests.get(url, params={"limit": 4000}) # Max number of records is 3349
-df = pd.DataFrame(r.json()["items"])
-assert len(df) == 3349
+
 
 # Initiate Vector Store
 embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_id)
@@ -175,18 +184,14 @@ prompt = ChatPromptTemplate.from_messages([
         Answer the given question only using messages that are from the user mentioned in the question.
         Give your answer in one or two sentences.
         Only answer the input question. Do not answer anyxthing else, ask any other questions or otherwise try to continue the conversation.
-
         Here are some examples of questions and answers:
-
         
         Question: What did John eat for breakfast on Friday?
         Answer: John ate green eggs and ham.
         
-
         Question: How many miles did Vanessa walk?
         Answer: Vanessa walked a thousand miles.
         
-
         Question: At what hotel did Jacob stay during his vacation?
         Answer: Jacob stayed at the Hotel California.
         
@@ -197,35 +202,37 @@ prompt = ChatPromptTemplate.from_messages([
     HumanMessage(content="{input}")
 ])
 
-df_name_to_id = df.groupby(["user_name", "user_id"], dropna=False).size().reset_index()
-name_to_id_lookup = {row["user_name"]: row["user_id"] for idx, row in df_name_to_id.iterrows()}
+
+def predict(
+    user_input,
+    history: list[dict[str, str]],
+    user_name
+):
+    answer = chat_turn(user_input, user_name)
+    return answer
+
+app = FastAPI()
 
 
+@app.get("/ask_question")
+def ask_question(user_input: str, user_name: str):
+    answer = chat_turn(user_input, user_name)
+    return {"response": answer}
+
+"""
+For information on how to customize the ChatInterface, peruse the gradio docs: https://www.gradio.app/docs/chatinterface
+"""
+chatbot = gr.ChatInterface(
+    predict,
+    type="messages",
+    additional_inputs=[
+        gr.Textbox(value="User", label="user_name")
+    ]
+)
+
+with gr.Blocks() as demo:
+    chatbot.render()
 
 
-app = Flask(__name__)
-api = Api(app)
-parser = reqparse.RequestParser()
-parser.add_argument("user_input", type=str)
-parser.add_argument("user_name", type=str)
-
-class QuestionAnsweringSystem(Resource):
-    """
-    API endpoint for answering questions about members
-    """
-    def get(self, user_input, user_name):
-        try:
-            answer = chat_turn(user_input, user_name)
-            return answer, 200
-        except:
-            return {
-                    "Error": f"Issue answering query '{user_input}' for user '{user_name}'"
-                }, 400
-
-    def handle_error(self, e):
-        return jsonify({"error": str(e)}), 500        
-
-api.add_resource(QuestionAnsweringSystem, "/ask_question")
-
-if __name__ == '__main__':
-    app.run(debug=False, host="0.0.0.0")
+if __name__ == "__main__":
+    demo.launch(share=True)
